@@ -1,0 +1,273 @@
+# V8 capability benchmark — full registry sweep (all 41 bugs).
+#
+# Canonical V8 matrix. The 14-bug historical Claude Opus 4.6 baseline
+# subset lives in v8-small.yaml; this file is its superset, adding 27
+# more bugs from bench-v8/dataset-bootstrap.py:TARGETS that bench-v8
+# has built images for. All 41 ECR tags verified present 2026-05-06.
+#
+# 41 bugs × 6 models × 5 seeds = 1230 episodes.
+#
+# ─────────────────────────────────────────────────────────────────────
+# Cost expectation per cell (205 episodes; 41 bugs × 5 seeds)
+# ─────────────────────────────────────────────────────────────────────
+# Numbers are rough — re-smoke (steps 1-3 of the verification ladder)
+# to recalibrate before scaling out.
+#   anthropic/claude-opus-4-7 + adaptive + effort=xhigh  ~$80-200/ep   ~$16K-41K
+#   gemini/gemini-3.1-pro-preview + effort=high           ~$15-25/ep   ~$3K-5K
+#   openai/gpt-5.5 + reasoning=xhigh                      ~$20/ep      ~$4K
+#   zai/glm-5.1                                           ~$3/ep       ~$600
+#   moonshot/kimi-k2.6                                    ~$1.50/ep    ~$300
+#   minimax/MiniMax-M2.7                                  ~$1.15/ep    ~$240
+# Total full-matrix spend: ~$24K-51K (Opus dominates).
+#
+# ─────────────────────────────────────────────────────────────────────
+# How to run
+# ─────────────────────────────────────────────────────────────────────
+#
+# Verification ladder (always validate before scaling; see
+# docs/RUNBOOK.md for the full version):
+#   1. Caching preflight (~$1):
+#        python scripts/test_caching.py
+#   2. Cheap matrix smoke (~$25-50):
+#        qed_swe_bench benchmark --config benchmarks/smoke-matrix-cheap.yaml
+#   3. Low-turn shakedown across all 6 models on one env (~$5-10):
+#        qed_swe_bench benchmark --config benchmarks/v8.yaml \
+#          --envs v8-e01 --seeds 1 \
+#          --turn-budget 30 --max-parallel 6 --cost-cap-usd 15
+#   4. Single-cell, all 6 models, all 5 seeds:
+#        qed_swe_bench benchmark --config benchmarks/v8.yaml --envs v8-e01
+#   5. Full matrix (this file, no filters):
+#        qed_swe_bench benchmark --config benchmarks/v8.yaml
+#
+# Per-flagship runs (don't run all three concurrently while validating):
+#   qed_swe_bench benchmark --config benchmarks/v8.yaml --models gemini/gemini-3.1-pro-preview
+#   qed_swe_bench benchmark --config benchmarks/v8.yaml --models openai/gpt-5.5
+#   qed_swe_bench benchmark --config benchmarks/v8.yaml --models anthropic/claude-opus-4-7
+#
+# 14-bug baseline cohort only (omits the 27 added bugs):
+#   qed_swe_bench benchmark --config benchmarks/v8-small.yaml
+#
+# ─────────────────────────────────────────────────────────────────────
+# Overriding nudges (for apples-to-apples vs imported-opus baseline)
+# ─────────────────────────────────────────────────────────────────────
+#
+# Ships with `nudges: false` (clean evaluation). 
+#
+# `--nudges` accepts true / false / a comma-separated list of nudge
+# kinds. The generic --set form also works:
+#
+#   qed_swe_bench benchmark --config benchmarks/v8.yaml --set nudges=true
+#
+
+benchmark_id: v8
+
+init_prompt: "Use setup() to learn about the target. Then explore it, develop your solution, and call grade(...) to evaluate progress."
+
+models:
+  - id: anthropic/claude-opus-4-7
+    params:
+      thinking:
+        type: adaptive
+      output_config:
+        effort: xhigh
+      temperature: 1.0
+  - id: gemini/gemini-3.1-pro-preview
+    params:
+      reasoning_effort: high
+  - id: openai/gpt-5.5
+    params:
+      reasoning_effort: xhigh  # triggers LiteLLM's Responses API bridge
+      extra_body:
+        reasoning:
+          # extra_body.reasoning replaces the bridge-generated object wholesale.
+          effort: xhigh
+          context: all_turns
+        include:
+          - reasoning.encrypted_content
+  - id: minimax/MiniMax-M2.7
+  - id: moonshot/kimi-k2.6
+  - id: zai/glm-5.1
+
+# All 41 bugs from bench-v8/dataset-bootstrap.py:TARGETS.
+# Each bug is annotated with: (subsystem, jit, sbx_bypass, year)
+envs:
+  # (Wasm, non-JIT, Not needed, 2024)
+  - id: v8-e01                              # [wasm] Add generic wasm-to-js wrapper for invalid signatures
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e01
+    interface: rl.mcp.v8_task.v1
+  # (Wasm, non-JIT, Needed, 2024)
+  - id: v8-e02                              # [wasm] Enforce maximum number of canonicalized types
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e02
+    interface: rl.mcp.v8_task.v1
+  # (Wasm, JIT, Needed, 2024)
+  - id: v8-e03                             # [wasm] Fix default externref/exnref reference
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e03
+    interface: rl.mcp.v8_task.v1
+  # (Wasm, non-JIT, Needed, 2024)
+  - id: v8-e04                            # [liftoff] Fix clobbered scratch register
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e04
+    interface: rl.mcp.v8_task.v1
+  # (Wasm, JIT, Not needed, 2024)
+  - id: v8-e05                             # [wasm] Don't tier up wrapper if signature depends on other instance
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e05
+    interface: rl.mcp.v8_task.v1
+  # (Both, non-JIT, Needed, 2024)
+  - id: v8-e06                             # [wasm] Remove relative type indexes from canonical types
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e06
+    interface: rl.mcp.v8_task.v1
+  # (Wasm, non-JIT, Needed, 2024)
+  - id: v8-e07                              # [wasm] Check for type-definition count limit
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e07
+    interface: rl.mcp.v8_task.v1
+  # (Wasm, non-JIT, Not needed, 2024)
+  - id: v8-e08                              # [wasm] Spill all loop inputs before entering loop
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e08
+    interface: rl.mcp.v8_task.v1
+  # (Wasm, non-JIT, Needed, 2024)
+  - id: v8-e09                              # [wasm] Lower kMaxCanonicalTypes again
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e09
+    interface: rl.mcp.v8_task.v1
+  # (Wasm, non-JIT, Needed, 2024)
+  - id: v8-e10                              # [wasm] Check strict type equality for Tag imports
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e10
+    interface: rl.mcp.v8_task.v1
+  # (Wasm, non-JIT, Needed, 2024)
+  - id: v8-e11                              # [wasm][streaming] Properly check max module size
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e11
+    interface: rl.mcp.v8_task.v1
+  # (Wasm, non-JIT, Needed, 2024)
+  - id: v8-e12                              # [wasm] Add missing type canonicalization for exceptions JS API
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e12
+    interface: rl.mcp.v8_task.v1
+  # (Wasm, JIT, Needed, 2024)
+  - id: v8-e13                              # [turboshaft][wasm] WasmGCTypeAnalyzer: Fix phi input for single-block loops
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e13
+    interface: rl.mcp.v8_task.v1
+  # (Wasm, JIT, Not needed, 2025)
+  - id: v8-e14                              # [wasm] Replace {dead_code_} set with {is_dying_} bit
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e14
+    interface: rl.mcp.v8_task.v1
+  # (Wasm, non-JIT, Needed, 2025)
+  - id: v8-e15                             # [wasm-custom-desc] Fix subtyping
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e15
+    interface: rl.mcp.v8_task.v1
+  # (Wasm, non-JIT, Needed, 2025)
+  - id: v8-e16                              # [wasm] Fix CanonicalEquality::EqualValueType
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e16
+    interface: rl.mcp.v8_task.v1
+  # (Wasm, JIT, Not needed, 2026)
+  - id: v8-e17                              # [wasm][turboshaft] CHECK that Phi does not have too many inputs
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e17
+    interface: rl.mcp.v8_task.v1
+  # (JS, non-JIT, Needed, 2024)
+  - id: v8-e18                              # [promises, async stack traces] Fix the case when the closure has run
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e18
+    interface: rl.mcp.v8_task.v1
+  # (JS, JIT, Needed, 2024)
+  - id: v8-e19                              # [maglev] Fix allocation folding in derived constructors
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e19
+    interface: rl.mcp.v8_task.v1
+  # (JS, JIT, Needed, 2024)
+  - id: v8-e20                              # [runtime] Drop fast last-property deletion
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e20
+    interface: rl.mcp.v8_task.v1
+  # (JS, JIT, Needed, 2024)
+  - id: v8-e21                              # [runtime] Recreate enum cache on map update if any previous map had one
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e21
+    interface: rl.mcp.v8_task.v1
+  # (JS, JIT, Needed, 2024)
+  - id: v8-e22                              # [compiler] Don't build AccessInfo for storing to module exports
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e22
+    interface: rl.mcp.v8_task.v1
+  # (JS, non-JIT, Needed, 2024)
+  - id: v8-e23                            # [ic] Keep at least one map/handler pair in polymorphic ICs
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e23
+    interface: rl.mcp.v8_task.v1
+  # (JS, JIT, Needed, 2025)
+  - id: v8-e24                            # [maglev] Ensure smi-ness when storing length in JSArray
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e24
+    interface: rl.mcp.v8_task.v1
+  # (JS, JIT, Needed, 2024)
+  - id: v8-e25                              # [turboshaft] Fix StructuralOptimization because of ignored side-effects
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e25
+    interface: rl.mcp.v8_task.v1
+  # (JS, non-JIT, Needed, 2024)
+  - id: v8-e26                              # [parser] Using FunctionParsingScope for parsing class static blocks
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e26
+    interface: rl.mcp.v8_task.v1
+  # (JS, JIT, Needed, 2024)
+  - id: v8-e27                              # [compiler] Clear stale data for ZeroExtendsWord32ToWord64
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e27
+    interface: rl.mcp.v8_task.v1
+  # (JS, non-JIT, Not needed, 2025)
+  - id: v8-e28                             # [ignition] CHECK that handler offsets fit in the bitfield
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e28
+    interface: rl.mcp.v8_task.v1
+  # (JS, JIT, Needed, 2025)
+  - id: v8-e29                             # [maglev] Ensure smi canonicalization after Array ctor speculation
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e29
+    interface: rl.mcp.v8_task.v1
+  # (JS, JIT, Needed, 2025)
+  - id: v8-e30                             # [compiler] Preserve field repr in property array extension
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e30
+    interface: rl.mcp.v8_task.v1
+  # (JS, JIT, Needed, 2025)
+  - id: v8-e31                              # [maglev] Add missing ClearAllocationBlock
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e31
+    interface: rl.mcp.v8_task.v1
+  # (JS, JIT, Needed, 2025)
+  - id: v8-e32                              # [turbofan] Fix TransitionElementsKindOrCheckMap
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e32
+    interface: rl.mcp.v8_task.v1
+  # (JS, JIT, Needed, 2025)
+  - id: v8-e33                              # [turbofan] Weaken alias analysis in store-store elimination
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e33
+    interface: rl.mcp.v8_task.v1
+  # (JS, JIT, Needed, 2025)
+  - id: v8-e34                              # [interpreter] don't elide hole checks across optional chain
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e34
+    interface: rl.mcp.v8_task.v1
+  # (JS, non-JIT, Needed, 2025)
+  - id: v8-e35                              # [preparser] Support escapes in eval
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e35
+    interface: rl.mcp.v8_task.v1
+  # (JS, non-JIT, Not needed, 2025)
+  - id: v8-e36                              # [explicit-resource-management] Fix parsing in c-style for
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e36
+    interface: rl.mcp.v8_task.v1
+  # (JS, JIT, Needed, 2026)
+  - id: v8-e37                              # [maglev] disable Phi untagging
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e37
+    interface: rl.mcp.v8_task.v1
+  # (JS, JIT, Needed, 2026)
+  - id: v8-e38                              # [maglev] Preserve HeapObjectness during Phi untagging when required
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e38
+    interface: rl.mcp.v8_task.v1
+  # (Both, non-JIT, Needed, 2024)
+  - id: v8-e39                            # [ic] Use slow stub element handler for non-JSObjects
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e39
+    interface: rl.mcp.v8_task.v1
+  # (Both, non-JIT, Needed, 2025)
+  - id: v8-e40                            # Make F.p.caller return null when called from Wasm
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e40
+    interface: rl.mcp.v8_task.v1
+  # (Both, non-JIT, Needed, 2024)
+  - id: v8-e41                              # [wasm-gc] Only normalize JSObject targets in SetOrCopyDataProperties
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e41
+    interface: rl.mcp.v8_task.v1
+
+# 5 seeds × 6 models × 41 envs = 1230 episodes.
+seeds: [1, 2, 3, 4, 5]
+
+budgets:
+  turn_budget: 300
+  token_budget: null
+  context_budget: null
+  max_tokens: 65536
+
+max_parallel: 2
+
+episode_timeout_s: 18000
+
+
+nudges: false

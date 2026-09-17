@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Refuse commits made directly on main. Per CLAUDE.md git workflow, all work
+# goes through feature branches; main is a merge-only tracking branch.
+#
+# Wire this up by running `make setup-hooks` once after clone.
+
+set -euo pipefail
+
+branch=$(git symbolic-ref --short -q HEAD || true)
+
+if [[ "$branch" == "main" || "$branch" == "master" ]]; then
+  echo "✗ refusing to commit on '$branch' (per CLAUDE.md: feature branches only)." >&2
+  echo "  $ git checkout -b feature/<short-name>" >&2
+  echo "  $ git commit ..." >&2
+  echo "" >&2
+  echo "  If you really need to bypass this (e.g. fixing a hook itself):" >&2
+  echo "  $ git commit --no-verify" >&2
+  exit 1
+fi
+
+exit 0

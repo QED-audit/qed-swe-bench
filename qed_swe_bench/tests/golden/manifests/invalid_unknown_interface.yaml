@@ -1,0 +1,16 @@
+# Negative fixture: schema validates BUT interface registry rejects.
+
+schema_version: "1"
+env_id: bogus-env
+interface: rl.mcp.totally_fake.v1
+task_type: binary_task
+
+image:
+  ref: local/x:latest
+
+mcp:
+  episode_tools: [setup]
+
+evaluate:
+  kind: mcp_tool
+  tool: grade

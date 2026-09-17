@@ -1,0 +1,105 @@
+# Cheap pipeline-smoke matrix.
+#
+# Same loop, same envs, same scoring as benchmarks/v8.yaml — just three CHEAP
+# models at a small turn budget. The point is to flush integration issues
+# (tool-schema strictness, MCP plumbing, model-match check, cost.json shape)
+# WITHOUT spending flagship dollars.
+#
+# Runs the full 14 V8 envs × 1 seed × 3 cheap models = 42 episodes.
+# Per-episode cost target: ~$0.50-1.50; cell cost: ~$25-50.
+#
+# Pass criteria (manual check after run):
+#   - every cell produces populated cost.json (with served_model set),
+#     transcript.jsonl, score.json
+#   - tokens_cache_read > 0 after turn 2 on each provider (validates that
+#     PR #34 / OpenAI auto-cache / Gemini implicit-cache are all firing)
+#   - no ModelMismatchError aborts (validates PR #37's matcher accepts the
+#     dated snapshots these providers return)
+#
+# To run:
+#   set -a; . ./.env; set +a
+#   qed_swe_bench benchmark --config benchmarks/smoke-matrix-cheap.yaml
+#
+# After:
+#   qed_swe_bench summary --benchmark-id smoke-matrix-cheap
+#   qed_swe_bench aggregate --benchmark-id smoke-matrix-cheap
+
+benchmark_id: smoke-matrix-cheap
+
+# Bug-specific framing comes from the container's MCP setup(); init
+# prompt falls through to the runner's default.
+
+# Cheap-tier counterparts of the v8.yaml flagships. Same client routing
+# (AnthropicNative for Anthropic, LiteLLM for the rest), so any plumbing
+# bug surfaces identically.
+models:
+  - id: anthropic/claude-haiku-4-5      # ~$1/M input, $5/M output
+  - id: gemini/gemini-2.5-flash         # ~$0.30/M input, $2.50/M output (direct Gemini API)
+  - id: openai/gpt-5-mini               # ~$0.30/M input, $1.20/M output
+
+# Full 14-bug set so any env-specific issue (image build, MCP server
+# variant) shows up. Same env list as benchmarks/v8.yaml — single source of
+# truth for the bug set.
+envs:
+  - id: v8-e01
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e01
+    interface: rl.mcp.v8_task.v1
+  - id: v8-e02
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e02
+    interface: rl.mcp.v8_task.v1
+  - id: v8-e03
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e03
+    interface: rl.mcp.v8_task.v1
+  - id: v8-e04
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e04
+    interface: rl.mcp.v8_task.v1
+  - id: v8-e18
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e18
+    interface: rl.mcp.v8_task.v1
+  - id: v8-e19
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e19
+    interface: rl.mcp.v8_task.v1
+  - id: v8-e20
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e20
+    interface: rl.mcp.v8_task.v1
+  - id: v8-e21
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e21
+    interface: rl.mcp.v8_task.v1
+  - id: v8-e22
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e22
+    interface: rl.mcp.v8_task.v1
+  - id: v8-e23
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e23
+    interface: rl.mcp.v8_task.v1
+  - id: v8-e24
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e24
+    interface: rl.mcp.v8_task.v1
+  - id: v8-e25
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e25
+    interface: rl.mcp.v8_task.v1
+  - id: v8-e39
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e39
+    interface: rl.mcp.v8_task.v1
+  - id: v8-e40
+    image: 302524490333.dkr.ecr.us-east-1.amazonaws.com/swe-bench/v8-r1:e40
+    interface: rl.mcp.v8_task.v1
+
+# One seed — we're not measuring capability, just integration health.
+seeds: [1]
+
+# Cut the budget so we can't accidentally spend flagship-tier dollars on
+# pipeline checks. ~50 turns is enough to exercise setup → exec →
+# read_file → write_file → grade at least once per cell.
+budgets:
+  turn_budget: 50
+  token_budget: 500000
+  context_budget: 180000
+  max_tokens: 8192
+
+max_parallel: 2
+
+# Cap total smoke spend at $50 — well under any single flagship cell.
+cost_cap_usd: 50.00
+
+# No nudges — clean evaluation. Same as v8.yaml.
+nudges: false

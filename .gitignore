@@ -1,0 +1,44 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+data/*.db
+data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal
+data/*.sqlite-journal
+# Backup snapshots from local DB rebuilds — sensitive (may contain
+# imported vr-agent rows) and never meant to be committed. The
+# `data/*.sqlite` pattern above only catches files ending exactly in
+# `.sqlite`, so suffixed backups (e.g. .sqlite.bak.<ts>) need their
+# own line.
+data/*.sqlite.bak*
+data/*.sqlite.backup*
+# Anchor with a leading slash so this only matches the top-level
+# per-episode artifact directory, NOT webui/src/app/dashboard/runs/
+# (the Next.js route tree). The unanchored form silently dropped those
+# files from git for the entire M2 lifecycle.
+/runs/
+.env
+.venv/
+venv/
+
+# Audit bundles are build artifacts — regenerate with `make audit-bundle`.
+audit-bundles/
+
+# Working deployment notes (working doc; not checked in until finalized).
+# Drop a tracked replacement in `docs/` when ready.
+/deploy/
+
+tmp/
+
+# Per-operator local notes (RUNBOOK.local.md, etc.). Suffix-based so any
+# personal working doc can use the convention without touching .gitignore.
+*.local.md
+
+.gcp/
